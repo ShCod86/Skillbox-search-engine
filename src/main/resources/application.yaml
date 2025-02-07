@@ -8,6 +8,8 @@ indexing-settings:
       name: Skillbox
     - url: https://www.playback.ru
       name: PlayBack.Ru
+    - url: https://metanit.com
+      name: METANIT.COM
 
 #application properties
 server:

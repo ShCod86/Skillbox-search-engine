@@ -5,11 +5,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 
 import javax.persistence.*;
-import javax.persistence.Index;
+import java.util.List;
 
 @Entity(name = "page")
 @Table(indexes = {
-        @Index(name = "idx_page_path", columnList = "path")
+        @javax.persistence.Index(name = "idx_page_path", columnList = "path")
 })
 @Getter
 @Setter
@@ -22,14 +22,18 @@ public class Page {
 
     @ManyToOne
     @JoinColumn(name = "site_id", nullable = false, referencedColumnName = "id")
-    private Site site;
+    private SiteEntity site;
 
     @Column(name = "path", nullable = false)
-    private String url;
+    private String path;
 
     @Column(name = "code", nullable = false)
     private int code;
 
     @Column(name = "content", nullable = false, columnDefinition = "MEDIUMTEXT")
     private String content;
+
+    @OneToMany(mappedBy = "page", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Index> searchIndexes;
+
 }

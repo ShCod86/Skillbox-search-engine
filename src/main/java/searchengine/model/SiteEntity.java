@@ -7,12 +7,14 @@ import org.hibernate.annotations.CreationTimestamp;
 
 import javax.persistence.*;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
 
 @Entity(name = "site")
 @Getter
 @Setter
 @RequiredArgsConstructor
-public class Site {
+public class SiteEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Id
     @Column(nullable = false, columnDefinition = "INT")
@@ -34,5 +36,11 @@ public class Site {
 
     @Column(name = "name", nullable = false, columnDefinition = "VARCHAR(255)")
     private String name;
+
+    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Page> pages = Collections.emptyList();
+
+//    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL, orphanRemoval = true)
+//    private List<Lemma> lemmas;
 
 }
