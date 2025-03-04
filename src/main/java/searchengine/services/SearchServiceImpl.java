@@ -23,7 +23,6 @@ import java.util.stream.Collectors;
 public class SearchServiceImpl implements SearchService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
-    private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
     private final WordService wordService;
 

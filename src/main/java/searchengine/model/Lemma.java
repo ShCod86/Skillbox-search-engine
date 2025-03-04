@@ -12,7 +12,6 @@ import java.util.List;
 @Entity
 @Getter
 @Setter
-@ToString
 @RequiredArgsConstructor
 @Table(name = "lemma", indexes = {
         @Index(name = "idx_lemma_text", columnList = "lemma"),

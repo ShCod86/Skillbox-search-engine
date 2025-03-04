@@ -43,7 +43,7 @@ public class ApiController {
 
     @PostMapping("/indexPage")
     public IndexingResponse indexSinglePage(@RequestBody String url) {
-        url = url.replaceAll("url=", "");
+        url = url.replace("url=", "");
         return indexingService.indexSinglePage(URLDecoder.decode(url, StandardCharsets.UTF_8));
     }
 

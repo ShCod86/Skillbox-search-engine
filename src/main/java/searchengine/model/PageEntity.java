@@ -12,7 +12,6 @@ import java.util.List;
 @Entity
 @Getter
 @Setter
-@ToString
 @RequiredArgsConstructor
 @Table(name = "page", indexes = @Index(name = "idx_path", columnList = "path"))
 public class PageEntity {
