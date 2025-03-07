@@ -3,7 +3,6 @@ package searchengine.model;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
-import lombok.ToString;
 
 import javax.persistence.*;
 import java.util.ArrayList;
@@ -14,8 +13,8 @@ import java.util.List;
 @Setter
 @RequiredArgsConstructor
 @Table(name = "lemma", indexes = {
-        @Index(name = "idx_lemma_text", columnList = "lemma"),
-        @Index(name = "idx_site", columnList = "site_id")
+        @javax.persistence.Index(name = "idx_lemma_text", columnList = "lemma"),
+        @javax.persistence.Index(name = "idx_site", columnList = "site_id")
 })
 public class Lemma {
     @Id
@@ -25,7 +24,7 @@ public class Lemma {
 
     @ManyToOne
     @JoinColumn(name = "site_id", nullable = false, referencedColumnName = "id")
-    private SiteEntity site;
+    private Site site;
 
     @Column(name = "lemma", nullable = false, columnDefinition = "VARCHAR(255)")
     private String lemma;
@@ -34,6 +33,6 @@ public class Lemma {
     private volatile int frequency;
 
     @OneToMany(mappedBy = "lemma", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<IndexEntity> indexes = new ArrayList<>();
+    private List<Index> indexes = new ArrayList<>();
 
 }

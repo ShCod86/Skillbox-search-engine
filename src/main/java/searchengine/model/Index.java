@@ -13,7 +13,7 @@ import javax.persistence.*;
 @ToString
 @RequiredArgsConstructor
 @Table(name = "`index`")
-public class IndexEntity {
+public class Index {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false)
@@ -21,7 +21,7 @@ public class IndexEntity {
 
     @ManyToOne
     @JoinColumn(name = "page_id", nullable = false, referencedColumnName = "id")
-    private PageEntity page;
+    private Page page;
 
     @ManyToOne
     @JoinColumn(name = "lemma_id", nullable = false, referencedColumnName = "id")

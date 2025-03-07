@@ -1,17 +1,17 @@
 package searchengine.repositories;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import searchengine.model.PageEntity;
-import searchengine.model.SiteEntity;
+import searchengine.model.Page;
+import searchengine.model.Site;
 
 import java.util.List;
 
-public interface PageRepository extends JpaRepository<PageEntity, Integer> {
+public interface PageRepository extends JpaRepository<Page, Integer> {
     boolean existsByPath(String url);
 
-    void deleteAllBySite(SiteEntity siteEntity);
+    void deleteAllBySite(Site siteEntity);
 
-    PageEntity findByPath(String path);
+    Page findByPath(String path);
 
-    List<PageEntity> findAllBySite(SiteEntity site);
+    List<Page> findAllBySite(Site site);
 }

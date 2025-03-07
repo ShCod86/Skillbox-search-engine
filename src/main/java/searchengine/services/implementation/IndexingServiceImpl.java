@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.implementation;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -7,7 +7,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.select.Elements;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import searchengine.config.Site;
+import searchengine.config.SiteFromConfig;
 import searchengine.config.SitesList;
 import searchengine.dto.indexing.IndexingResponse;
 import searchengine.model.*;
@@ -15,6 +15,8 @@ import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.interfaces.IndexingService;
+import searchengine.services.WordService;
 
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -35,7 +37,7 @@ public class IndexingServiceImpl implements IndexingService {
     private final SitesList sitesList;
 
     private volatile boolean indexingInProgress = false;
-    private final Map<SiteEntity, ForkJoinPool> activePools = new ConcurrentHashMap<>();
+    private final Map<Site, ForkJoinPool> activePools = new ConcurrentHashMap<>();
     private static final List<String> IGNORED_EXTENSIONS = Arrays.asList(".zip", ".pdf", ".jpg", ".png", ".docx", ".xlsx");
     private final Map<String, Lemma> lemmaCache = new ConcurrentHashMap<>();
 
@@ -93,11 +95,11 @@ public class IndexingServiceImpl implements IndexingService {
             if (!sitesList.getSites().stream().anyMatch(site -> site.getUrl().equals(domain))) {
                 return createErrorResponse(response, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
             }
-            SiteEntity siteEntity = siteRepository.findByUrl(domain);
+            Site siteEntity = siteRepository.findByUrl(domain);
             if (siteEntity == null) {
                 siteEntity = createNewSite(domain, sitesList.getSites().stream().filter(site -> site.getUrl().equals(domain)).findFirst().get().getName());
             }
-            PageEntity page = createPage(siteEntity, connectToPage(url));
+            Page page = createPage(siteEntity, connectToPage(url));
             if (page != null) {
                 cleanLemmaAndIndex(page);
                 pageRepository.save(page);
@@ -124,7 +126,7 @@ public class IndexingServiceImpl implements IndexingService {
         activePools.clear();
     }
 
-private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas, SiteEntity siteEntity) {
+private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas, Site siteEntity) {
     List<Lemma> lemmasToSave = new ArrayList<>();
     List<Lemma> lemmasToUpdate = new ArrayList<>();
 
@@ -161,18 +163,18 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
 }
 
 
-    private void cleanLemmaAndIndex(PageEntity page) {
-        PageEntity existingPage = pageRepository.findByPath(page.getPath());
+    private void cleanLemmaAndIndex(Page page) {
+        Page existingPage = pageRepository.findByPath(page.getPath());
         if (existingPage != null) {
             indexRepository.deleteByPage(existingPage);
-            lemmaRepository.deleteAll(existingPage.getIndexes().stream().map(IndexEntity::getLemma).toList());
+            lemmaRepository.deleteAll(existingPage.getIndexes().stream().map(Index::getLemma).toList());
             pageRepository.delete(existingPage);
         }
     }
 
-    private void indexSite(Site site) {
+    private void indexSite(SiteFromConfig site) {
         String url = site.getUrl();
-        SiteEntity siteEntity = siteRepository.findByUrl(url);
+        Site siteEntity = siteRepository.findByUrl(url);
         if (siteEntity != null) {
             pageRepository.deleteAllBySite(siteEntity);
             siteEntity.setStatus(Status.INDEXING);
@@ -185,11 +187,11 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         ForkJoinPool pool = new ForkJoinPool();
         activePools.put(siteEntity, pool);
 
-        SiteEntity finalSiteEntity = siteEntity;
+        Site finalSiteEntity = siteEntity;
         pool.execute(() -> indexSitePages(finalSiteEntity, url));
     }
 
-    private void indexSitePages(SiteEntity siteEntity, String url) {
+    private void indexSitePages(Site siteEntity, String url) {
         try {
             ForkJoinPool.commonPool().invoke(new PageTask(siteEntity, url));
             updateSiteStatus(siteEntity, Status.INDEXED);
@@ -205,7 +207,7 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         }
     }
 
-    private void handleIndexingError(SiteEntity siteEntity, Exception e) {
+    private void handleIndexingError(Site siteEntity, Exception e) {
         siteEntity.setStatus(Status.FAILED);
         siteEntity.setLastError("Ошибка при индексации: " + e.getMessage());
         siteEntity.setStatusTime(Instant.now());
@@ -213,7 +215,7 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         log.error("Ошибка при индексации сайта: {}", siteEntity.getUrl(), e);
     }
 
-    private void updateSiteStatus(SiteEntity siteEntity, Status status) {
+    private void updateSiteStatus(Site siteEntity, Status status) {
         siteEntity.setStatus(status);
         siteEntity.setStatusTime(Instant.now());
         siteRepository.save(siteEntity);
@@ -232,8 +234,8 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         }
     }
 
-    private SiteEntity createNewSite(String url, String name) {
-        SiteEntity site = new SiteEntity();
+    private Site createNewSite(String url, String name) {
+        Site site = new Site();
         site.setUrl(url);
         site.setName(name);
         site.setStatus(Status.INDEXING);
@@ -241,12 +243,12 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         return siteRepository.save(site);
     }
 
-    private PageEntity createPage(SiteEntity site, Document doc) {
+    private Page createPage(Site site, Document doc) {
         if (doc == null) {
             log.warn("Не удалось создать страницу, так как документ равен null");
             return null;
         }
-        PageEntity page = new PageEntity();
+        Page page = new Page();
         page.setSite(site);
         page.setPath(doc.baseUri().replaceAll("https?://[^/]+", ""));
         page.setCode(doc.connection().response().statusCode());
@@ -269,10 +271,10 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
                 .referrer("http://www.google.com").get();
     }
 
-    private void indexPageContent(PageEntity page) {
+    private void indexPageContent(Page page) {
         String content = page.getContent();
         Map<String, Integer> lemmas = wordService.collectLemmas(content);
-        List<IndexEntity> indexEntities = new ArrayList<>();
+        List<Index> indexEntities = new ArrayList<>();
 
         // Пакетное сохранение лемм
         saveOrUpdateLemmasInBatch(lemmas, page.getSite());
@@ -287,11 +289,11 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
                 lemmaCache.put(lemmaText, lemma);
             }
 
-            IndexEntity indexEntity = new IndexEntity();
-            indexEntity.setPage(page);
-            indexEntity.setLemma(lemma);
-            indexEntity.setRank(count);
-            indexEntities.add(indexEntity);
+            Index index = new Index();
+            index.setPage(page);
+            index.setLemma(lemma);
+            index.setRank(count);
+            indexEntities.add(index);
         }
 
         // Пакетное сохранение индексов
@@ -299,11 +301,11 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
     }
 
     private class PageTask extends RecursiveAction {
-        private final SiteEntity site;
+        private final Site site;
         private final String url;
         private static final ConcurrentSkipListSet<String> visitedLinks = new ConcurrentSkipListSet<>();
 
-        private PageTask(SiteEntity site, String url) {
+        private PageTask(Site site, String url) {
             this.site = site;
             this.url = url;
         }
@@ -317,7 +319,7 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
             List<PageTask> tasks = new ArrayList<>();
             try {
                 Document doc = connectToPage(url);
-                PageEntity page = createPage(site, doc);
+                Page page = createPage(site, doc);
                 if (page != null && !pageRepository.existsByPath(page.getPath())) {
                     pageRepository.save(page);
                     site.setStatusTime(Instant.now());

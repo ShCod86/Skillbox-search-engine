@@ -1,17 +1,18 @@
-package searchengine.services;
+package searchengine.services.implementation;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import searchengine.config.Site;
+import searchengine.config.SiteFromConfig;
 import searchengine.config.SitesList;
 import searchengine.dto.statistics.DetailedStatisticsItem;
 import searchengine.dto.statistics.StatisticsData;
 import searchengine.dto.statistics.StatisticsResponse;
 import searchengine.dto.statistics.TotalStatistics;
-import searchengine.model.SiteEntity;
+import searchengine.model.Site;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.interfaces.StatisticsService;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,9 +33,9 @@ public class StatisticsServiceImpl implements StatisticsService {
         total.setIndexing(true);
 
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
-        List<Site> sitesList = sites.getSites();
+        List<SiteFromConfig> sitesList = sites.getSites();
         for (int i = 0; i < sitesList.size(); i++) {
-            SiteEntity site = siteRepository.findByUrl(sitesList.get(i).getUrl());
+            Site site = siteRepository.findByUrl(sitesList.get(i).getUrl());
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl());

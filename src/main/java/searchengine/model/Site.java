@@ -3,7 +3,6 @@ package searchengine.model;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
-import lombok.ToString;
 
 import javax.persistence.*;
 import java.time.Instant;
@@ -15,7 +14,7 @@ import java.util.Set;
 @Setter
 @RequiredArgsConstructor
 @Table(name = "site")
-public class SiteEntity {
+public class Site {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -38,7 +37,7 @@ public class SiteEntity {
     private String name;
 
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
-    private Set<PageEntity> pages = new HashSet<>();
+    private Set<Page> pages = new HashSet<>();
 
     @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
     private Set<Lemma> lemmas = new HashSet<>();

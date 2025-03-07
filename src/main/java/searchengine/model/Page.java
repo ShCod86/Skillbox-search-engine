@@ -3,7 +3,6 @@ package searchengine.model;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
-import lombok.ToString;
 
 import javax.persistence.*;
 import java.util.ArrayList;
@@ -13,8 +12,8 @@ import java.util.List;
 @Getter
 @Setter
 @RequiredArgsConstructor
-@Table(name = "page", indexes = @Index(name = "idx_path", columnList = "path"))
-public class PageEntity {
+@Table(name = "page", indexes = @javax.persistence.Index(name = "idx_path", columnList = "path"))
+public class Page {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id", nullable = false)
@@ -22,7 +21,7 @@ public class PageEntity {
 
     @ManyToOne
     @JoinColumn(name = "site_id", nullable = false, referencedColumnName = "id")
-    private SiteEntity site;
+    private Site site;
 
     @Column(name = "path", nullable = false)
     private String path;
@@ -34,6 +33,6 @@ public class PageEntity {
     private String content;
 
     @OneToMany(mappedBy = "page", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<IndexEntity> indexes = new ArrayList<>();
+    private List<Index> indexes = new ArrayList<>();
 
 }

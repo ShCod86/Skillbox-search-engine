@@ -1,10 +1,10 @@
 package searchengine.repositories;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-import searchengine.model.SiteEntity;
+import searchengine.model.Site;
 
-public interface SiteRepository extends JpaRepository<SiteEntity, Integer> {
+public interface SiteRepository extends JpaRepository<Site, Integer> {
 
-    SiteEntity findByUrl(String url);
+    Site findByUrl(String url);
 
 }

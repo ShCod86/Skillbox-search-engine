@@ -1,4 +1,4 @@
-package searchengine.services;
+package searchengine.services.implementation;
 
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
@@ -6,13 +6,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.dto.search.SearchResponse;
 import searchengine.dto.search.SearchResult;
-import searchengine.model.IndexEntity;
+import searchengine.model.Index;
 import searchengine.model.Lemma;
-import searchengine.model.PageEntity;
-import searchengine.model.SiteEntity;
+import searchengine.model.Page;
+import searchengine.model.Site;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.SiteRepository;
+import searchengine.services.interfaces.SearchService;
+import searchengine.services.WordService;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -35,7 +37,7 @@ public class SearchServiceImpl implements SearchService {
         }
 
         Set<String> uniqueLemmas = wordService.getLemmaSet(query);
-        SiteEntity site = getSiteEntity(siteUrl);
+        Site site = getSiteEntity(siteUrl);
 
         List<Lemma> filteredLemmas = getFilteredLemmas(site);
         List<String> validLemmas = filterValidLemmas(uniqueLemmas, filteredLemmas);
@@ -44,7 +46,7 @@ public class SearchServiceImpl implements SearchService {
             return createEmptyResponse(response);
         }
 
-        Map<PageEntity, Double> pageRelevanceMap = calculatePageRelevance(validLemmas, site);
+        Map<Page, Double> pageRelevanceMap = calculatePageRelevance(validLemmas, site);
         List<SearchResult> searchResults = createSearchResults(pageRelevanceMap, query);
 
         return paginateResults(response, searchResults, offset, limit);
@@ -54,11 +56,11 @@ public class SearchServiceImpl implements SearchService {
         return query == null || query.isBlank();
     }
 
-    private SiteEntity getSiteEntity(String siteUrl) {
+    private Site getSiteEntity(String siteUrl) {
         return (siteUrl != null) ? siteRepository.findByUrl(siteUrl) : null;
     }
 
-    private List<Lemma> getFilteredLemmas(SiteEntity site) {
+    private List<Lemma> getFilteredLemmas(Site site) {
         return (site != null) ? lemmaRepository.findAllBySite(site) : lemmaRepository.findAll();
     }
     //TODO обработать NullPointerException
@@ -85,18 +87,18 @@ public class SearchServiceImpl implements SearchService {
         return response;
     }
 
-    private Map<PageEntity, Double> calculatePageRelevance(List<String> validLemmas, SiteEntity site) {
-        Map<PageEntity, Double> pageRelevanceMap = new HashMap<>();
+    private Map<Page, Double> calculatePageRelevance(List<String> validLemmas, Site site) {
+        Map<Page, Double> pageRelevanceMap = new HashMap<>();
 
-        List<SiteEntity> sitesToSearch = (site == null) ? siteRepository.findAll() : Collections.singletonList(site);
+        List<Site> sitesToSearch = (site == null) ? siteRepository.findAll() : Collections.singletonList(site);
 
-        for (SiteEntity siteToSearch : sitesToSearch) {
+        for (Site siteToSearch : sitesToSearch) {
             for (String lemma : validLemmas) {
                 Optional<Lemma> lemmaEntity = lemmaRepository.findByLemmaAndSite(lemma, siteToSearch);
                 if (lemmaEntity.isPresent()) {
-                    List<IndexEntity> indexEntities = indexRepository.findAllByLemma(lemmaEntity.get());
-                    for (IndexEntity index : indexEntities) {
-                        PageEntity page = index.getPage();
+                    List<Index> indexEntities = indexRepository.findAllByLemma(lemmaEntity.get());
+                    for (Index index : indexEntities) {
+                        Page page = index.getPage();
                         if (site == null || page.getSite().equals(site)) {
                             double currentRank = pageRelevanceMap.getOrDefault(page, 0.0);
                             pageRelevanceMap.put(page, currentRank + index.getRank());
@@ -110,12 +112,12 @@ public class SearchServiceImpl implements SearchService {
         return pageRelevanceMap;
     }
 
-    private List<SearchResult> createSearchResults(Map<PageEntity, Double> pageRelevanceMap, String query) {
+    private List<SearchResult> createSearchResults(Map<Page, Double> pageRelevanceMap, String query) {
         double maxRelevance = pageRelevanceMap.values().stream().max(Double::compare).orElse(0.0);
         List<SearchResult> searchResults = new ArrayList<>();
 
-        for (Map.Entry<PageEntity, Double> entry : pageRelevanceMap.entrySet()) {
-            PageEntity page = entry.getKey();
+        for (Map.Entry<Page, Double> entry : pageRelevanceMap.entrySet()) {
+            Page page = entry.getKey();
             double absRelevance = entry.getValue();
             double relRelevance = maxRelevance > 0 ? absRelevance / maxRelevance : 0;
 
