@@ -12,7 +12,6 @@ import searchengine.model.PageEntity;
 import searchengine.model.SiteEntity;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
-import searchengine.repositories.PageRepository;
 import searchengine.repositories.SiteRepository;
 
 import java.util.*;
@@ -62,13 +61,13 @@ public class SearchServiceImpl implements SearchService {
     private List<Lemma> getFilteredLemmas(SiteEntity site) {
         return (site != null) ? lemmaRepository.findAllBySite(site) : lemmaRepository.findAll();
     }
-
+    //TODO обработать NullPointerException
     private List<String> filterValidLemmas(Set<String> uniqueLemmas, List<Lemma> filteredLemmas) {
         Map<String, Integer> lemmaFrequencyMap = createLemmaFrequencyMap(filteredLemmas);
         return uniqueLemmas.stream()
                 .filter(lemma -> lemmaFrequencyMap.getOrDefault(lemma, 0) <= (filteredLemmas.size() * 0.2))
                 .sorted(Comparator.comparingInt(lemmaFrequencyMap::get))
-                .collect(Collectors.toList());
+                .toList();
     }
 
     private Map<String, Integer> createLemmaFrequencyMap(List<Lemma> filteredLemmas) {
