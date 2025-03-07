@@ -11,5 +11,5 @@ public class SearchResult {
     private String uri;
     private String title;
     private String snippet;
-    private double relevance;
+    private Double relevance;
 }

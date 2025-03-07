@@ -97,7 +97,11 @@ public class IndexingServiceImpl implements IndexingService {
             }
             Site siteEntity = siteRepository.findByUrl(domain);
             if (siteEntity == null) {
-                siteEntity = createNewSite(domain, sitesList.getSites().stream().filter(site -> site.getUrl().equals(domain)).findFirst().get().getName());
+                siteEntity = createNewSite(domain, sitesList.getSites().stream()
+                        .filter(site -> site.getUrl().equals(domain))
+                        .findFirst()
+                        .get()
+                        .getName());
             }
             Page page = createPage(siteEntity, connectToPage(url));
             if (page != null) {

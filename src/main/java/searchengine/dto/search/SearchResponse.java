@@ -8,8 +8,8 @@ import java.util.List;
 @Getter
 @Setter
 public class SearchResponse {
-    private boolean result;
+    private Boolean result;
     private String error;
-    private int count;
+    private Integer count;
     private List<SearchResult> data;
 }
