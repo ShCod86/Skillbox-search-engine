@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import searchengine.dto.search.SearchResponse;
 import searchengine.dto.search.SearchResult;
+import searchengine.exceptions.SearchException;
 import searchengine.model.Index;
 import searchengine.model.Lemma;
 import searchengine.model.Page;
@@ -13,11 +14,10 @@ import searchengine.model.Site;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
 import searchengine.repositories.SiteRepository;
-import searchengine.services.interfaces.SearchService;
 import searchengine.services.WordService;
+import searchengine.services.interfaces.SearchService;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -33,7 +33,7 @@ public class SearchServiceImpl implements SearchService {
         SearchResponse response = new SearchResponse();
 
         if (isQueryInvalid(query)) {
-            return createErrorResponse(response, "Задан пустой поисковый запрос");
+            throw new SearchException("Задан пустой поисковый запрос");
         }
 
         Set<String> uniqueLemmas = wordService.getLemmaSet(query);
@@ -63,11 +63,12 @@ public class SearchServiceImpl implements SearchService {
     private List<Lemma> getFilteredLemmas(Site site) {
         return (site != null) ? lemmaRepository.findAllBySite(site) : lemmaRepository.findAll();
     }
-    //TODO обработать NullPointerException
+
+
     private List<String> filterValidLemmas(Set<String> uniqueLemmas, List<Lemma> filteredLemmas) {
         Map<String, Integer> lemmaFrequencyMap = createLemmaFrequencyMap(filteredLemmas);
         return uniqueLemmas.stream()
-                .filter(lemma -> lemmaFrequencyMap.getOrDefault(lemma, 0) <= (filteredLemmas.size() * 0.2))
+                .filter(lemma -> lemmaFrequencyMap.containsKey(lemma) && lemmaFrequencyMap.getOrDefault(lemma, 0) <= (filteredLemmas.size() * 0.2))
                 .sorted(Comparator.comparingInt(lemmaFrequencyMap::get))
                 .toList();
     }
@@ -75,7 +76,9 @@ public class SearchServiceImpl implements SearchService {
     private Map<String, Integer> createLemmaFrequencyMap(List<Lemma> filteredLemmas) {
         Map<String, Integer> frequencyMap = new HashMap<>();
         for (Lemma lemma : filteredLemmas) {
-            frequencyMap.put(lemma.getLemma(), lemma.getFrequency());
+            if (lemma.getLemma() != null) {
+                frequencyMap.put(lemma.getLemma(), lemma.getFrequency());
+            }
         }
         return frequencyMap;
     }
@@ -87,28 +90,24 @@ public class SearchServiceImpl implements SearchService {
         return response;
     }
 
+
     private Map<Page, Double> calculatePageRelevance(List<String> validLemmas, Site site) {
         Map<Page, Double> pageRelevanceMap = new HashMap<>();
-
         List<Site> sitesToSearch = (site == null) ? siteRepository.findAll() : Collections.singletonList(site);
 
         for (Site siteToSearch : sitesToSearch) {
             for (String lemma : validLemmas) {
-                Optional<Lemma> lemmaEntity = lemmaRepository.findByLemmaAndSite(lemma, siteToSearch);
-                if (lemmaEntity.isPresent()) {
-                    List<Index> indexEntities = indexRepository.findAllByLemma(lemmaEntity.get());
+                lemmaRepository.findByLemmaAndSite(lemma, siteToSearch).ifPresent(lemmaEntity -> {
+                    List<Index> indexEntities = indexRepository.findAllByLemma(lemmaEntity);
                     for (Index index : indexEntities) {
                         Page page = index.getPage();
                         if (site == null || page.getSite().equals(site)) {
-                            double currentRank = pageRelevanceMap.getOrDefault(page, 0.0);
-                            pageRelevanceMap.put(page, currentRank + index.getRank());
+                            pageRelevanceMap.merge(page, (double) index.getRank(), Double::sum);
                         }
                     }
-                }
+                });
             }
         }
-
-
         return pageRelevanceMap;
     }
 
@@ -160,7 +159,7 @@ public class SearchServiceImpl implements SearchService {
                 // Выделить слово жирным
                 String highlighted = text.substring(start, end).replace(word, "<b>" + word + "</b>");
                 snippet.append(highlighted).append("...");
-                break; // Сниппет только для одного совпадения
+                break;
             }
         }
         return snippet.toString();
@@ -173,19 +172,11 @@ public class SearchServiceImpl implements SearchService {
         List<SearchResult> paginatedResults = searchResults.stream()
                 .skip(offset)
                 .limit(limit)
-                .collect(Collectors.toList());
+                .toList();
 
         response.setData(paginatedResults);
         response.setResult(true);
 
-        return response;
-    }
-
-    private SearchResponse createErrorResponse(SearchResponse response, String errorMessage) {
-        response.setCount(0);
-        response.setData(Collections.emptyList());
-        response.setResult(false);
-        response.setError(errorMessage);
         return response;
     }
 }

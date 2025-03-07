@@ -1,5 +1,6 @@
 package searchengine.services.implementation;
 
+import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
@@ -10,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import searchengine.config.SiteFromConfig;
 import searchengine.config.SitesList;
 import searchengine.dto.indexing.IndexingResponse;
+import searchengine.exceptions.IndexingException;
 import searchengine.model.*;
 import searchengine.repositories.IndexRepository;
 import searchengine.repositories.LemmaRepository;
@@ -46,7 +48,7 @@ public class IndexingServiceImpl implements IndexingService {
     public IndexingResponse startIndexing() {
         IndexingResponse response = new IndexingResponse();
         if (indexingInProgress) {
-            return createErrorResponse(response, "Индексация уже запущена");
+            throw new IndexingException("Индексация уже запущена");
         }
         indexingInProgress = true;
         clearDatabase();
@@ -60,7 +62,7 @@ public class IndexingServiceImpl implements IndexingService {
     public IndexingResponse stopIndexing() {
         IndexingResponse response = new IndexingResponse();
         if (!indexingInProgress) {
-            return createErrorResponse(response, "Индексация не запущена");
+            throw new IndexingException("Индексация не запущена");
         }
         indexingInProgress = false;
         activePools.forEach((site, pool) -> {
@@ -74,10 +76,11 @@ public class IndexingServiceImpl implements IndexingService {
                 Thread.currentThread().interrupt();
             }
             if (siteRepository.findByUrl(site.getUrl()).getStatus() != Status.INDEXED) {
-                site.setStatus(Status.FAILED);
-                site.setLastError("Индексация остановлена пользователем");
-                site.setStatusTime(Instant.now());
-                siteRepository.save(site);
+//                site.setStatus(Status.FAILED);
+//                site.setLastError("Индексация остановлена пользователем");
+//                site.setStatusTime(Instant.now());
+//                siteRepository.save(site);
+                updateSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
             }
         });
         activePools.clear();
@@ -92,8 +95,8 @@ public class IndexingServiceImpl implements IndexingService {
         try {
             URL urlFromString = new URL(url);
             String domain = urlFromString.getProtocol() + "://" + urlFromString.getHost();
-            if (!sitesList.getSites().stream().anyMatch(site -> site.getUrl().equals(domain))) {
-                return createErrorResponse(response, "Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
+            if (sitesList.getSites().stream().noneMatch(site -> site.getUrl().equals(domain))) {
+                throw new IndexingException("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
             }
             Site siteEntity = siteRepository.findByUrl(domain);
             if (siteEntity == null) {
@@ -112,12 +115,10 @@ public class IndexingServiceImpl implements IndexingService {
             response.setResult(true);
         } catch (MalformedURLException e) {
             log.error("Не корректный Url {}", url);
-            response.setError("Не корректный Url " + url);
-            response.setResult(false);
+            throw new IndexingException("Не корректный Url " + url);
         } catch (IOException | InterruptedException e) {
             log.error("Ошибка при индексации страницы: {}", url, e);
-            response.setError("Ошибка при индексации страницы: " + url);
-            response.setResult(false);
+            throw new IndexingException("Ошибка при индексации страницы: " + url);
         }
         return response;
     }
@@ -181,10 +182,11 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         Site siteEntity = siteRepository.findByUrl(url);
         if (siteEntity != null) {
             pageRepository.deleteAllBySite(siteEntity);
-            siteEntity.setStatus(Status.INDEXING);
-            siteEntity.setLastError("");
-            siteEntity.setStatusTime(Instant.now());
-            siteRepository.save(siteEntity);
+//            siteEntity.setStatus(Status.INDEXING);
+//            siteEntity.setLastError("");
+//            siteEntity.setStatusTime(Instant.now());
+//            siteRepository.save(siteEntity);
+            updateSiteStatus(siteEntity, Status.INDEXING, null);
         } else {
             siteEntity = createNewSite(url, site.getName());
         }
@@ -198,15 +200,15 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
     private void indexSitePages(Site siteEntity, String url) {
         try {
             ForkJoinPool.commonPool().invoke(new PageTask(siteEntity, url));
-            updateSiteStatus(siteEntity, Status.INDEXED);
+            updateSiteStatus(siteEntity, Status.INDEXED, null);
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
-                handleIndexingError(siteEntity, e);
+//                handleIndexingError(siteEntity, e);
+                updateSiteStatus(siteEntity, Status.FAILED, e.toString());
+                log.error("Ошибка при индексации сайта: {}", siteEntity.getUrl(), e);
             }
         } finally {
-
             activePools.remove(siteEntity);
-
             checkAndFinishIndexing();
         }
     }
@@ -219,17 +221,13 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         log.error("Ошибка при индексации сайта: {}", siteEntity.getUrl(), e);
     }
 
-    private void updateSiteStatus(Site siteEntity, Status status) {
+    private void updateSiteStatus(Site siteEntity, Status status, String error) {
         siteEntity.setStatus(status);
+        siteEntity.setLastError(error);
         siteEntity.setStatusTime(Instant.now());
         siteRepository.save(siteEntity);
     }
 
-    private IndexingResponse createErrorResponse(IndexingResponse response, String errorMessage) {
-        response.setError(errorMessage);
-        response.setResult(false);
-        return response;
-    }
 
     private synchronized void checkAndFinishIndexing() {
         if (activePools.isEmpty()) {
