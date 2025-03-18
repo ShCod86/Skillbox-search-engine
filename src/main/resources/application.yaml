@@ -2,13 +2,15 @@ server:
   port: 8080
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/search_engine?useSSL=false&requireSSL=false&allowPublicKeyRetrieval=true
+    url: jdbc:postgresql://localhost:5432/search_engine
     username: root
     password: root
   jpa:
     show-sql: false
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
+  liquibase:
+    change-log: db/changelog/db.changelog-master.xml
 
 # example values
 

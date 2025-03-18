@@ -12,7 +12,7 @@ import java.util.List;
 @Getter
 @Setter
 @RequiredArgsConstructor
-@Table(name = "page", indexes = @javax.persistence.Index(name = "idx_path", columnList = "path"))
+@Table(name = "page")
 public class Page {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,7 +32,7 @@ public class Page {
     @Column(name = "content", nullable = false, columnDefinition = "MEDIUMTEXT")
     private String content;
 
-    @OneToMany(mappedBy = "page", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "page")
     private List<Index> indexes = new ArrayList<>();
 
 }

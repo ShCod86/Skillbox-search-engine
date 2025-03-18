@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: search_engine-postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: search_engine
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root

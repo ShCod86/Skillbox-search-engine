@@ -1,8 +1,11 @@
 package searchengine.model;
 
+import io.hypersistence.utils.hibernate.type.basic.PostgreSQLEnumType;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.Type;
+import org.hibernate.annotations.TypeDef;
 
 import javax.persistence.*;
 import java.time.Instant;
@@ -14,6 +17,7 @@ import java.util.Set;
 @Setter
 @RequiredArgsConstructor
 @Table(name = "site")
+@TypeDef(name = "status_enum", typeClass = PostgreSQLEnumType.class)
 public class Site {
 
     @Id
@@ -22,6 +26,7 @@ public class Site {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
+    @Type(type = "status_enum")
     private Status status;
 
     @Column(name = "status_time", nullable = false, columnDefinition = "DATETIME")
@@ -36,10 +41,10 @@ public class Site {
     @Column(name = "name", nullable = false, columnDefinition = "VARCHAR(255)")
     private String name;
 
-    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "site")
     private Set<Page> pages = new HashSet<>();
 
-    @OneToMany(mappedBy = "site", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "site")
     private Set<Lemma> lemmas = new HashSet<>();
 
 }

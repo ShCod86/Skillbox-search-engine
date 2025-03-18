@@ -12,10 +12,7 @@ import java.util.List;
 @Getter
 @Setter
 @RequiredArgsConstructor
-@Table(name = "lemma", indexes = {
-        @javax.persistence.Index(name = "idx_lemma_text", columnList = "lemma"),
-        @javax.persistence.Index(name = "idx_site", columnList = "site_id")
-})
+@Table(name = "lemma")
 public class Lemma {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -32,7 +29,7 @@ public class Lemma {
     @Column(name = "frequency", nullable = false)
     private volatile int frequency;
 
-    @OneToMany(mappedBy = "lemma", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "lemma")
     private List<Index> indexes = new ArrayList<>();
 
 }

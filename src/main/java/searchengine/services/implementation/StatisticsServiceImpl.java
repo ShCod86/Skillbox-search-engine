@@ -34,8 +34,8 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         List<DetailedStatisticsItem> detailed = new ArrayList<>();
         List<SiteFromConfig> sitesList = sites.getSites();
-        for (int i = 0; i < sitesList.size(); i++) {
-            Site site = siteRepository.findByUrl(sitesList.get(i).getUrl());
+        for (SiteFromConfig siteFromConfig : sitesList) {
+            Site site = siteRepository.findByUrl(siteFromConfig.getUrl());
             DetailedStatisticsItem item = new DetailedStatisticsItem();
             item.setName(site.getName());
             item.setUrl(site.getUrl());
