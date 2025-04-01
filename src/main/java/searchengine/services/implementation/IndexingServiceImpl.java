@@ -48,60 +48,71 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     @Transactional
     public IndexingResponse startIndexing() {
+        log.info("Запрос на запуск индексации");
         IndexingResponse response = new IndexingResponse();
         if (indexingInProgress) {
+            log.warn("Попытка запуска индексации, когда она уже выполняется");
             throw new IndexingException("Индексация уже запущена");
         }
         indexingInProgress = true;
+        log.info("Очистка базы данных перед началом индексации");
         clearDatabase();
+        log.info("Начало индексации сайтов: {}", sitesList.getSites().stream().map(SiteFromConfig::getUrl).toList());
         sitesList.getSites().forEach(this::indexSite);
         response.setResult(true);
+        log.info("Индексация успешно запущена");
         return response;
     }
 
     @Override
     @Transactional
     public IndexingResponse stopIndexing() {
+        log.info("Запрос на остановку индексации");
         IndexingResponse response = new IndexingResponse();
         if (!indexingInProgress) {
+            log.warn("Попытка остановки индексации, когда она не выполняется");
             throw new IndexingException("Индексация не запущена");
         }
         indexingInProgress = false;
+        log.info("Остановка {} активных пулов индексации", activePools.size());
         activePools.forEach((site, pool) -> {
+            log.debug("Остановка пула для сайта: {}", site.getUrl());
             pool.shutdownNow();
             try {
-                if (!pool.awaitTermination(1, TimeUnit.SECONDS)) {
-                    log.warn("Пул не завершил работу в течение 1 секунды");
+                if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
+                    log.warn("Пул не завершил работу в течение 5 секунд");
                 }
             } catch (InterruptedException e) {
-                log.error("Ошибка при ожидании завершения пула", e);
+                log.error("Ошибка при ожидании завершения пула для сайта {}", site.getUrl(), e);
                 Thread.currentThread().interrupt();
             }
             if (siteRepository.findByUrl(site.getUrl()).getStatus() != Status.INDEXED) {
-//                site.setStatus(Status.FAILED);
-//                site.setLastError("Индексация остановлена пользователем");
-//                site.setStatusTime(Instant.now());
-//                siteRepository.save(site);
+                log.info("Обновление статуса сайта {} на FAILED (индексация остановлена)", site.getUrl());
                 updateSiteStatus(site, Status.FAILED, "Индексация остановлена пользователем");
             }
         });
         activePools.clear();
         response.setResult(true);
+        log.info("Индексация успешно остановлена");
         return response;
     }
 
     @Override
     @Transactional
     public IndexingResponse indexSinglePage(String url) {
+        log.info("Запрос на индексацию отдельной страницы: {}", url);
         IndexingResponse response = new IndexingResponse();
         try {
             URL urlFromString = new URL(url);
             String domain = urlFromString.getProtocol() + "://" + urlFromString.getHost();
+            log.debug("Определен домен страницы: {}", domain);
             if (sitesList.getSites().stream().noneMatch(site -> site.getUrl().equals(domain))) {
+                log.warn("Страница {} находится за пределами разрешенных сайтов", url);
                 throw new IndexingException("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
             }
             Site siteEntity = siteRepository.findByUrl(domain);
             if (siteEntity == null) {
+                log.info("Создание новой записи сайта для {}", domain);
                 siteEntity = createNewSite(domain, sitesList.getSites().stream()
                         .filter(site -> site.getUrl().equals(domain))
                         .findFirst()
@@ -110,9 +121,12 @@ public class IndexingServiceImpl implements IndexingService {
             }
             Page page = createPage(siteEntity, connectToPage(url));
             if (page != null) {
+                log.debug("Очистка предыдущих данных для страницы {}", page.getPath());
                 cleanLemmaAndIndex(page);
                 pageRepository.save(page);
+                log.debug("Индексация контента страницы {}", page.getPath());
                 indexPageContent(page);
+                log.info("Страница {} успешно проиндексирована", url);
             }
             response.setResult(true);
         } catch (MalformedURLException e) {
@@ -184,10 +198,6 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         Site siteEntity = siteRepository.findByUrl(url);
         if (siteEntity != null) {
             pageRepository.deleteAllBySite(siteEntity);
-//            siteEntity.setStatus(Status.INDEXING);
-//            siteEntity.setLastError("");
-//            siteEntity.setStatusTime(Instant.now());
-//            siteRepository.save(siteEntity);
             updateSiteStatus(siteEntity, Status.INDEXING, null);
         } else {
             siteEntity = createNewSite(url, site.getName());
@@ -205,7 +215,6 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
             updateSiteStatus(siteEntity, Status.INDEXED, null);
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
-//                handleIndexingError(siteEntity, e);
                 updateSiteStatus(siteEntity, Status.FAILED, e.toString());
                 log.error("Ошибка при индексации сайта: {}", siteEntity.getUrl(), e);
             }
@@ -276,8 +285,10 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
     }
 
     private void indexPageContent(Page page) {
+        log.debug("Начало индексации контента страницы: {}", page.getPath());
         String content = page.getContent();
         Map<String, Integer> lemmas = wordService.collectLemmas(content);
+        log.debug("Найдено {} уникальных лемм на странице {}", lemmas.size(), page.getPath());
         List<Index> indexEntities = new ArrayList<>();
 
         // Пакетное сохранение лемм
@@ -302,6 +313,7 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
 
         // Пакетное сохранение индексов
         indexRepository.saveAll(indexEntities);
+        log.debug("Сохранено {} индексов для страницы {}", indexEntities.size(), page.getPath());
     }
 
     private class PageTask extends RecursiveAction {

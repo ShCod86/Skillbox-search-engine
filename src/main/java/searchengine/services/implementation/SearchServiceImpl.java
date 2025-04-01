@@ -1,6 +1,7 @@
 package searchengine.services.implementation;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,9 +19,11 @@ import searchengine.services.WordService;
 import searchengine.services.interfaces.SearchService;
 
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SearchServiceImpl implements SearchService {
     private final LemmaRepository lemmaRepository;
     private final IndexRepository indexRepository;
@@ -30,24 +33,34 @@ public class SearchServiceImpl implements SearchService {
     @Override
     @Transactional
     public SearchResponse search(String query, String siteUrl, int offset, int limit) {
+        log.info("Поисковый запрос: '{}', сайт: {}, offset: {}, limit: {}", query, siteUrl, offset, limit);
         SearchResponse response = new SearchResponse();
 
         if (isQueryInvalid(query)) {
+            log.warn("Пустой поисковый запрос");
             throw new SearchException("Задан пустой поисковый запрос");
         }
 
+        log.debug("Получение лемм из запроса");
         Set<String> uniqueLemmas = wordService.getLemmaSet(query);
+        log.debug("Найдено {} уникальных лемм в запросе: {}", uniqueLemmas.size(), uniqueLemmas);
         Site site = getSiteEntity(siteUrl);
 
         List<Lemma> filteredLemmas = getFilteredLemmas(site);
+        log.debug("Получено {} лемм из базы данных", filteredLemmas.size());
         List<String> validLemmas = filterValidLemmas(uniqueLemmas, filteredLemmas);
+        log.debug("После фильтрации осталось {} лемм: {}", validLemmas.size(), validLemmas);
 
         if (validLemmas.isEmpty()) {
+            log.info("Нет подходящих лемм для поиска");
             return createEmptyResponse(response);
         }
 
+        log.debug("Расчет релевантности страниц");
         Map<Page, Double> pageRelevanceMap = calculatePageRelevance(validLemmas, site);
+        log.debug("Найдено {} релевантных страниц", pageRelevanceMap.size());
         List<SearchResult> searchResults = createSearchResults(pageRelevanceMap, query);
+        log.info("Поиск завершен, найдено {} результатов", searchResults.size());
 
         return paginateResults(response, searchResults, offset, limit);
     }
@@ -90,18 +103,20 @@ public class SearchServiceImpl implements SearchService {
         return response;
     }
 
-
     private Map<Page, Double> calculatePageRelevance(List<String> validLemmas, Site site) {
         Map<Page, Double> pageRelevanceMap = new HashMap<>();
         List<Site> sitesToSearch = (site == null) ? siteRepository.findAll() : Collections.singletonList(site);
+        log.debug("Поиск будет выполнен по {} сайтам", sitesToSearch.size());
 
         for (Site siteToSearch : sitesToSearch) {
             for (String lemma : validLemmas) {
                 lemmaRepository.findByLemmaAndSite(lemma, siteToSearch).ifPresent(lemmaEntity -> {
                     List<Index> indexEntities = indexRepository.findAllByLemma(lemmaEntity);
+                    log.trace("Для леммы '{}' найдено {} индексов", lemma, indexEntities.size());
                     for (Index index : indexEntities) {
                         Page page = index.getPage();
-                        if (site == null || page.getSite().equals(site)) {
+                        if ((site == null || page.getSite().equals(site)) &&
+                                isLemmaVisibleInPage(page, lemma)) {
                             pageRelevanceMap.merge(page, (double) index.getRank(), Double::sum);
                         }
                     }
@@ -110,6 +125,53 @@ public class SearchServiceImpl implements SearchService {
         }
         return pageRelevanceMap;
     }
+
+    private boolean isLemmaVisibleInPage(Page page, String lemma) {
+        String content = page.getContent();
+        String title = Jsoup.parse(content).title();
+        String visibleText = Jsoup.parse(content).text();
+        return containsLemma(title, lemma) || containsLemma(visibleText, lemma);
+    }
+
+    private boolean containsLemma(String text, String lemma) {
+        return text.toLowerCase().contains(lemma.toLowerCase());
+    }
+
+    private String createSnippet(String content, String query) {
+        String text = Jsoup.parse(content).text();
+        String title = Jsoup.parse(content).title();
+        StringBuilder snippet = new StringBuilder();
+        int snippetLength = 200;
+
+        if (containsLemma(title, query)) {
+            snippet.append("<b>Заголовок:</b> ").append(highlightWords(title, query));
+        }
+
+        String[] words = query.split("\\s+");
+        for (String word : words) {
+            if (text.toLowerCase().contains(word.toLowerCase())) {
+                int wordIndex = text.toLowerCase().indexOf(word.toLowerCase());
+                int start = Math.max(wordIndex - 60, 0);
+                int end = Math.min(start + snippetLength, text.length());
+
+                if (!snippet.isEmpty()) {
+                    snippet.append("<br><br>");
+                }
+                snippet.append(highlightWords(text.substring(start, end), query));
+                break;
+            }
+        }
+
+        return !snippet.isEmpty() ? snippet + "..." : "";
+    }
+
+    private String highlightWords(String text, String query) {
+        for (String word : query.split("\\s+")) {
+            text = text.replaceAll("(?i)(" + Pattern.quote(word) + ")", "<b>$1</b>");
+        }
+        return text;
+    }
+
 
     private List<SearchResult> createSearchResults(Map<Page, Double> pageRelevanceMap, String query) {
         double maxRelevance = pageRelevanceMap.values().stream().max(Double::compare).orElse(0.0);
@@ -132,37 +194,6 @@ public class SearchServiceImpl implements SearchService {
         }
 
         return searchResults;
-    }
-
-    private String createSnippet(String content, String query) {
-        String[] words = query.split("\\s+");
-        StringBuilder snippet = new StringBuilder();
-        String text = Jsoup.parse(content).text();
-        int snippetLength = 200; // Длина сниппета
-
-        for (String word : words) {
-            if (text.contains(word)) {
-                int wordIndex = text.indexOf(word);
-
-                // Найти начало предложения
-                int sentenceStart = 0;
-                for (int i = wordIndex; i >= 0; i--) {
-                    if (text.charAt(i) == '.' || text.charAt(i) == '!' || text.charAt(i) == '?') {
-                        sentenceStart = i + 1;
-                        break;
-                    }
-                }
-
-                int start = Math.max(Math.max(wordIndex - 60, sentenceStart), 0);
-                int end = Math.min(start + snippetLength, text.length());
-
-                // Выделить слово жирным
-                String highlighted = text.substring(start, end).replace(word, "<b>" + word + "</b>");
-                snippet.append(highlighted).append("...");
-                break;
-            }
-        }
-        return snippet.toString();
     }
 
     private SearchResponse paginateResults(SearchResponse response, List<SearchResult> searchResults, int offset, int limit) {

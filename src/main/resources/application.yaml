@@ -11,6 +11,20 @@ spring:
       ddl-auto: none
   liquibase:
     change-log: db/changelog/db.changelog-master.xml
+logging:
+  level:
+    root: INFO
+    searchengine.services.implementation: DEBUG
+    org.springframework.transaction: WARN
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  file:
+    name: logs/application.log
+    max-size: 10MB
+    max-history: 7
+    pattern:
+      console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+      file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
 # example values
 
