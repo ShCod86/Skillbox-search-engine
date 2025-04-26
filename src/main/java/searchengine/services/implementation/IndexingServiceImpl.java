@@ -45,6 +45,10 @@ public class IndexingServiceImpl implements IndexingService {
     private static final List<String> IGNORED_EXTENSIONS = Arrays.asList(".zip", ".pdf", ".jpg", ".png", ".docx", ".xlsx");
     private final Map<String, Lemma> lemmaCache = new ConcurrentHashMap<>();
 
+    private static final int MAX_POOL_SIZE = Runtime.getRuntime().availableProcessors() / 2;
+    private static final int REQUEST_DELAY_MS = 100;
+    private static final int CONNECTION_TIMEOUT_MS = 5000;
+
     @Override
     @Transactional
     public IndexingResponse startIndexing() {
@@ -77,10 +81,11 @@ public class IndexingServiceImpl implements IndexingService {
         log.info("Остановка {} активных пулов индексации", activePools.size());
         activePools.forEach((site, pool) -> {
             log.debug("Остановка пула для сайта: {}", site.getUrl());
-            pool.shutdownNow();
+            pool.shutdown();
             try {
-                if (!pool.awaitTermination(5, TimeUnit.SECONDS)) {
-                    log.warn("Пул не завершил работу в течение 5 секунд");
+                if (!pool.awaitTermination(1, TimeUnit.SECONDS)) {
+                    log.warn("Пул не завершил работу в течение 1 секунды");
+                    pool.shutdownNow();
                 }
             } catch (InterruptedException e) {
                 log.error("Ошибка при ожидании завершения пула для сайта {}", site.getUrl(), e);
@@ -113,11 +118,7 @@ public class IndexingServiceImpl implements IndexingService {
             Site siteEntity = siteRepository.findByUrl(domain);
             if (siteEntity == null) {
                 log.info("Создание новой записи сайта для {}", domain);
-                siteEntity = createNewSite(domain, sitesList.getSites().stream()
-                        .filter(site -> site.getUrl().equals(domain))
-                        .findFirst()
-                        .get()
-                        .getName());
+                siteEntity = createNewSite(domain, sitesList.getSites().stream().filter(site -> site.getUrl().equals(domain)).findFirst().get().getName());
             }
             Page page = createPage(siteEntity, connectToPage(url));
             if (page != null) {
@@ -147,41 +148,41 @@ public class IndexingServiceImpl implements IndexingService {
         activePools.clear();
     }
 
-private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas, Site siteEntity) {
-    List<Lemma> lemmasToSave = new ArrayList<>();
-    List<Lemma> lemmasToUpdate = new ArrayList<>();
+    private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas, Site siteEntity) {
+        List<Lemma> lemmasToSave = new ArrayList<>();
+        List<Lemma> lemmasToUpdate = new ArrayList<>();
 
-    for (Map.Entry<String, Integer> entry : lemmas.entrySet()) {
-        String lemmaText = entry.getKey();
-        Lemma lemma = lemmaCache.get(lemmaText);
+        for (Map.Entry<String, Integer> entry : lemmas.entrySet()) {
+            String lemmaText = entry.getKey();
+            Lemma lemma = lemmaCache.get(lemmaText);
 
-        if (lemma == null) {
-            lemma = lemmaRepository.findByLemmaAndSite(lemmaText, siteEntity).orElse(null);
-            if (lemma != null) {
+            if (lemma == null) {
+                lemma = lemmaRepository.findByLemmaAndSite(lemmaText, siteEntity).orElse(null);
+                if (lemma != null) {
+                    lemmaCache.put(lemmaText, lemma);
+                }
+            }
+
+            if (lemma == null) {
+                lemma = new Lemma();
+                lemma.setLemma(lemmaText);
+                lemma.setFrequency(1);
+                lemma.setSite(siteEntity);
+                lemmasToSave.add(lemma);
                 lemmaCache.put(lemmaText, lemma);
+            } else {
+                lemma.setFrequency(lemma.getFrequency() + 1);
+                lemmasToUpdate.add(lemma);
             }
         }
 
-        if (lemma == null) {
-            lemma = new Lemma();
-            lemma.setLemma(lemmaText);
-            lemma.setFrequency(1);
-            lemma.setSite(siteEntity);
-            lemmasToSave.add(lemma);
-            lemmaCache.put(lemmaText, lemma);
-        } else {
-            lemma.setFrequency(lemma.getFrequency() + 1);
-            lemmasToUpdate.add(lemma);
+        if (!lemmasToSave.isEmpty()) {
+            lemmaRepository.saveAll(lemmasToSave);
+        }
+        if (!lemmasToUpdate.isEmpty()) {
+            lemmaRepository.saveAll(lemmasToUpdate);
         }
     }
-
-    if (!lemmasToSave.isEmpty()) {
-        lemmaRepository.saveAll(lemmasToSave);
-    }
-    if (!lemmasToUpdate.isEmpty()) {
-        lemmaRepository.saveAll(lemmasToUpdate);
-    }
-}
 
 
     private void cleanLemmaAndIndex(Page page) {
@@ -202,7 +203,7 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         } else {
             siteEntity = createNewSite(url, site.getName());
         }
-        ForkJoinPool pool = new ForkJoinPool();
+        ForkJoinPool pool = new ForkJoinPool(MAX_POOL_SIZE);
         activePools.put(siteEntity, pool);
 
         Site finalSiteEntity = siteEntity;
@@ -278,10 +279,11 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
             log.warn("Пропуск страницы с игнорируемым расширением: {}", url);
             return null;
         }
-        Thread.sleep(500);
-        return Jsoup.connect(url)
+        Thread.sleep(REQUEST_DELAY_MS);
+        return Jsoup.connect(url).timeout(CONNECTION_TIMEOUT_MS)
                 .userAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-                .referrer("http://www.google.com").get();
+                .referrer("http://www.google.com")
+                .get();
     }
 
     private void indexPageContent(Page page) {
@@ -360,4 +362,3 @@ private synchronized void saveOrUpdateLemmasInBatch(Map<String, Integer> lemmas,
         }
     }
 }
-

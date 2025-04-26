@@ -14,10 +14,9 @@ spring:
 logging:
   level:
     root: INFO
-    searchengine.services.implementation: DEBUG
     org.springframework.transaction: WARN
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+#    searchengine.services.implementation: DEBUG
+#    org.hibernate.SQL: DEBUG
   file:
     name: logs/application.log
     max-size: 10MB
@@ -25,6 +24,22 @@ logging:
     pattern:
       console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
       file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+  logback:
+    rollingpolicy:
+      file-name-pattern: logs/application-%d{yyyy-MM-dd}.%i.log
+    appender:
+      - name: FILE_DEBUG
+        file: logs/debug.log
+        pattern: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+        level: DEBUG
+        max-size: 10MB
+      - name: FILE_ERROR
+        file: logs/error.log
+        pattern: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+        level: ERROR
+        max-size: 10MB
+
 
 # example values
 

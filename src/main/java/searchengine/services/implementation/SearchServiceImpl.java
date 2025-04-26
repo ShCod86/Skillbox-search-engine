@@ -19,7 +19,6 @@ import searchengine.services.WordService;
 import searchengine.services.interfaces.SearchService;
 
 import java.util.*;
-import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
@@ -43,13 +42,13 @@ public class SearchServiceImpl implements SearchService {
 
         log.debug("Получение лемм из запроса");
         Set<String> uniqueLemmas = wordService.getLemmaSet(query);
-        log.debug("Найдено {} уникальных лемм в запросе: {}", uniqueLemmas.size(), uniqueLemmas);
+        log.info("Найдено {} уникальных лемм в запросе: {}", uniqueLemmas.size(), uniqueLemmas);
         Site site = getSiteEntity(siteUrl);
 
         List<Lemma> filteredLemmas = getFilteredLemmas(site);
-        log.debug("Получено {} лемм из базы данных", filteredLemmas.size());
+        log.info("Получено {} лемм из базы данных", filteredLemmas.size());
         List<String> validLemmas = filterValidLemmas(uniqueLemmas, filteredLemmas);
-        log.debug("После фильтрации осталось {} лемм: {}", validLemmas.size(), validLemmas);
+        log.info("После фильтрации осталось {} лемм: {}", validLemmas.size(), validLemmas);
 
         if (validLemmas.isEmpty()) {
             log.info("Нет подходящих лемм для поиска");
@@ -58,7 +57,7 @@ public class SearchServiceImpl implements SearchService {
 
         log.debug("Расчет релевантности страниц");
         Map<Page, Double> pageRelevanceMap = calculatePageRelevance(validLemmas, site);
-        log.debug("Найдено {} релевантных страниц", pageRelevanceMap.size());
+        log.info("Найдено {} релевантных страниц", pageRelevanceMap.size());
         List<SearchResult> searchResults = createSearchResults(pageRelevanceMap, query);
         log.info("Поиск завершен, найдено {} результатов", searchResults.size());
 
@@ -80,10 +79,8 @@ public class SearchServiceImpl implements SearchService {
 
     private List<String> filterValidLemmas(Set<String> uniqueLemmas, List<Lemma> filteredLemmas) {
         Map<String, Integer> lemmaFrequencyMap = createLemmaFrequencyMap(filteredLemmas);
-        return uniqueLemmas.stream()
-                .filter(lemma -> lemmaFrequencyMap.containsKey(lemma) && lemmaFrequencyMap.getOrDefault(lemma, 0) <= (filteredLemmas.size() * 0.2))
-                .sorted(Comparator.comparingInt(lemmaFrequencyMap::get))
-                .toList();
+        return uniqueLemmas.stream().filter(lemma -> lemmaFrequencyMap.containsKey(lemma)
+                && lemmaFrequencyMap.getOrDefault(lemma, 0) <= (filteredLemmas.size() * 0.2)).sorted(Comparator.comparingInt(lemmaFrequencyMap::get)).toList();
     }
 
     private Map<String, Integer> createLemmaFrequencyMap(List<Lemma> filteredLemmas) {
@@ -112,11 +109,12 @@ public class SearchServiceImpl implements SearchService {
             for (String lemma : validLemmas) {
                 lemmaRepository.findByLemmaAndSite(lemma, siteToSearch).ifPresent(lemmaEntity -> {
                     List<Index> indexEntities = indexRepository.findAllByLemma(lemmaEntity);
-                    log.trace("Для леммы '{}' найдено {} индексов", lemma, indexEntities.size());
+                    log.info("Для леммы '{}' найдено {} индексов", lemma, indexEntities.size());
                     for (Index index : indexEntities) {
                         Page page = index.getPage();
-                        if ((site == null || page.getSite().equals(site)) &&
-                                isLemmaVisibleInPage(page, lemma)) {
+                        if ((site == null || page.getSite().equals(site))
+                                && isLemmaVisibleInPage(page, lemma)
+                        ) {
                             pageRelevanceMap.merge(page, (double) index.getRank(), Double::sum);
                         }
                     }
@@ -127,10 +125,18 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private boolean isLemmaVisibleInPage(Page page, String lemma) {
-        String content = page.getContent();
-        String title = Jsoup.parse(content).title();
-        String visibleText = Jsoup.parse(content).text();
-        return containsLemma(title, lemma) || containsLemma(visibleText, lemma);
+        try {
+            String text = Jsoup.parse(page.getContent()).text().toLowerCase();
+            boolean isVisible = text.contains(lemma.toLowerCase());
+
+            if (!isVisible) {
+                log.info("Лемма '{}' не найдена в тексте страницы {}", lemma, page.getPath());
+            }
+            return isVisible;
+        } catch (Exception e) {
+            log.error("Ошибка проверки видимости леммы: {}", e.getMessage());
+            return false;
+        }
     }
 
     private boolean containsLemma(String text, String lemma) {
@@ -157,6 +163,7 @@ public class SearchServiceImpl implements SearchService {
                 if (!snippet.isEmpty()) {
                     snippet.append("<br><br>");
                 }
+                log.info("Слово выделеное {}", highlightWords(text.substring(start, end), query));
                 snippet.append(highlightWords(text.substring(start, end), query));
                 break;
             }
@@ -166,8 +173,20 @@ public class SearchServiceImpl implements SearchService {
     }
 
     private String highlightWords(String text, String query) {
-        for (String word : query.split("\\s+")) {
-            text = text.replaceAll("(?i)(" + Pattern.quote(word) + ")", "<b>$1</b>");
+        String lowerText = text.toLowerCase();
+        String lowerQuery = query.toLowerCase();
+
+        for (String word : lowerQuery.trim().split("\\s+")) {
+            word = word.trim();
+            if (!word.isEmpty()) {
+                int index = lowerText.indexOf(word);
+                while (index != -1) {
+                    String originalWord = text.substring(index, index + word.length());
+                    text = text.substring(0, index) + "<b>" + originalWord + "</b>" + text.substring(index + word.length());
+                    lowerText = text.toLowerCase();
+                    index = lowerText.indexOf(word, index + 7); // +7 из-за добавления <b></b>
+                }
+            }
         }
         return text;
     }
@@ -200,10 +219,7 @@ public class SearchServiceImpl implements SearchService {
         int totalResults = searchResults.size();
         response.setCount(totalResults);
 
-        List<SearchResult> paginatedResults = searchResults.stream()
-                .skip(offset)
-                .limit(limit)
-                .toList();
+        List<SearchResult> paginatedResults = searchResults.stream().skip(offset).limit(limit).toList();
 
         response.setData(paginatedResults);
         response.setResult(true);
