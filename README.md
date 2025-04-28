@@ -19,14 +19,14 @@
 - Статистика по индексации и поиску
 
 ## Технологический стек
-<img src=".logo/java-svgrepo-com.svg" width="50">
-<img src=".logo/spring-svgrepo-com.svg" width="50">
-<img src=".logo/hibernate-svgrepo-com.svg" width="50">
-<img src=".logo/postgresql-logo-svgrepo-com.svg" width="50">
-<img src=".logo/docker-svgrepo-com.svg" width="50">
 
-
-
+<div style="display: flex; gap 10px">
+    <img src=".logo/java-svgrepo-com.svg" width="50">
+    <img src=".logo/spring-svgrepo-com.svg" width="50">
+    <img src=".logo/hibernate-svgrepo-com.svg" width="50">
+    <img src=".logo/postgresql-logo-svgrepo-com.svg" width="50">
+    <img src=".logo/docker-svgrepo-com.svg" width="50">
+</div>
 
 ### Бэкенд
 
